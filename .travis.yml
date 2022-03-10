@@ -1,0 +1,50 @@
+before_deploy: '[[ ! -s "$(git rev-parse --git-dir)/shallow" ]] || git fetch --unshallow'
+deploy:
+- app: arborist
+  provider: hephy
+  controller: https://deis.lincx.in
+  username: travis-deploy
+  cli_version: v2.19.4
+  password:
+    secure: "SJrfLn4XhQwc1swpKWDcKYSsc1h+QLVehj/CuR2iPSn2z6ze4hlO6nESjWrU7g7oTEnPh6dwEA4PseJlSDwnLfvdqHdnBl8Spw/7rT6kLsNsD8874mwCSm5TVBMsnreVusIDBSIxdI0BCokNvcWVRSOo4S+49NiHdxMGdrY7mD+jLqgpYUp78sw4gBLcQMhe32HR4dSF6regujuL7yuHa86BQtEbQwpXWv62xLKwsVFYgI3Kk2hOQdGGCzi9LiZQhcVPvzuYKZw8WlMKdwIjeLFswnW8W9QfjeEhzRVbqB9Z9UVXiWo1bOngpTpMAej1GlrvEN5dQazfwYJhYLcn/yePQfhNdOkSyU88s6bVx0SPLxzQfecdDEbPDV/qVh8qJhBWabQjplMbIcUQMyXuHSIgoPqN5QIlZ6UkY/4QpJakHFRvnrmu3OjnuLyq/Dw0hhgOT5SVPj3me+cWWccaq9Iu/SABn27jIJ2Q15hw8j0pwREoUorj35oOS928ptUpJQ81tROcVGTyvRRoEqXC4zaDgWIg5KZV6NPkJdEgWaO7BNJV9hoJMBQCetc7IBsjfNj4MnTHA+VCwgm06azmvAV6SO2j3UZB1607BDIS2yDCh2WB76/RTu7AmgBlruLp18uydURgvjvXRSsRWeuwQaiojtESKNDfW5iBcByTa/o="
+- app: arborist-reports
+  provider: hephy
+  controller: https://deis.lincx.in
+  username: travis-deploy
+  cli_version: v2.19.4
+  password:
+    secure: "SJrfLn4XhQwc1swpKWDcKYSsc1h+QLVehj/CuR2iPSn2z6ze4hlO6nESjWrU7g7oTEnPh6dwEA4PseJlSDwnLfvdqHdnBl8Spw/7rT6kLsNsD8874mwCSm5TVBMsnreVusIDBSIxdI0BCokNvcWVRSOo4S+49NiHdxMGdrY7mD+jLqgpYUp78sw4gBLcQMhe32HR4dSF6regujuL7yuHa86BQtEbQwpXWv62xLKwsVFYgI3Kk2hOQdGGCzi9LiZQhcVPvzuYKZw8WlMKdwIjeLFswnW8W9QfjeEhzRVbqB9Z9UVXiWo1bOngpTpMAej1GlrvEN5dQazfwYJhYLcn/yePQfhNdOkSyU88s6bVx0SPLxzQfecdDEbPDV/qVh8qJhBWabQjplMbIcUQMyXuHSIgoPqN5QIlZ6UkY/4QpJakHFRvnrmu3OjnuLyq/Dw0hhgOT5SVPj3me+cWWccaq9Iu/SABn27jIJ2Q15hw8j0pwREoUorj35oOS928ptUpJQ81tROcVGTyvRRoEqXC4zaDgWIg5KZV6NPkJdEgWaO7BNJV9hoJMBQCetc7IBsjfNj4MnTHA+VCwgm06azmvAV6SO2j3UZB1607BDIS2yDCh2WB76/RTu7AmgBlruLp18uydURgvjvXRSsRWeuwQaiojtESKNDfW5iBcByTa/o="
+- provider: gae
+  edge: true
+  project: arborist-212100
+  keyfile: arborist-212100-31fbba1cc032.json
+  skip_cleanup: true
+  on:
+    branch: master
+- provider: gae
+  edge: true
+  config: app.reports.yaml
+  project: arborist-212100
+  keyfile: arborist-212100-31fbba1cc032.json
+  skip_cleanup: true
+  on:
+    branch: master
+- provider: gae
+  edge: true
+  config: app.staging.yaml
+  project: arborist-212100
+  keyfile: arborist-212100-31fbba1cc032.json
+  skip_cleanup: true
+  version: staging
+  no_promote: true
+  on:
+    branch: staging
+language: node_js
+node_js:
+- 12
+notifications:
+  slack: lincx:E4sOJz43deeNJqpBB45douHp
+before_install:
+- openssl aes-256-cbc -K $encrypted_deef8d7e22a4_key -iv $encrypted_deef8d7e22a4_iv
+  -in arborist-212100-31fbba1cc032.json.enc -out arborist-212100-31fbba1cc032.json
+  -d

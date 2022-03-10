@@ -1,0 +1,131 @@
+# This workflow requires two github action secrets:
+# Set in 
+# `GCR_PROJECT` is the project and optional folder to upload images to.
+# `GCR_JSON_KEY` is the service account json token for a GCP service account.
+#   See https://github.com/docker/login-action#google-container-registry-gcr for more details on login.
+# `NPM_TOKEN` is the private module npm token, if needed.
+
+name: Containerize
+
+on:
+  push:                   # Pushes to master and staging.
+    branches: [ 'master', 'staging' ]  
+
+  workflow_dispatch:      # Manual trigger.
+    inputs:
+      pack-version:
+        description: 'The version of pack to install'
+
+jobs:
+
+  containerize:
+    name: Containerize
+    runs-on: ubuntu-latest
+
+    env:
+      PACK_VERSION: 0.17.0
+      GCR_REGISTRY: us.gcr.io
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    steps:
+      - name: Defaults
+        shell: bash
+        run: |
+          if [[ "${{ github.event.inputs.pack-version }}" != "" ]]; then
+            echo PACK_VERSION="${{ github.event.inputs.pack-version }}" >> $GITHUB_ENV
+          fi
+          REPOSITORY_NAME=$(echo "$GITHUB_REPOSITORY" | awk -F / '{print $2}')
+          echo REPOSITORY_NAME="$REPOSITORY_NAME" >> $GITHUB_ENV
+          echo CONTAINER_IMAGE=$(echo "${GCR_REGISTRY}/${{ secrets.GCR_PROJECT }}/actions/${REPOSITORY_NAME}:${{ github.sha }}") >> $GITHUB_ENV
+          echo "//registry.npmjs.org/:_authToken=\${{ secrets.NPM_TOKEN }}" > .npmrc
+
+      - name:  Install pack CLI
+        shell: bash
+        run: |
+           #!/usr/bin/env bash
+           set -euo pipefail
+           mkdir -p "${HOME}"/bin
+           echo "PATH=${HOME}/bin:${PATH}" >> "${GITHUB_ENV}"
+           echo "Installing pack ${PACK_VERSION}"
+           curl \
+             --show-error \
+             --silent \
+             --location \
+             "https://github.com/buildpacks/pack/releases/download/v${PACK_VERSION}/pack-v${PACK_VERSION}-linux.tgz" \
+           | tar -C "${HOME}/bin" -xz pack
+
+      - name: Login to Google Cloud Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ env.GCR_REGISTRY }}
+          username: _json_key
+          password: ${{ secrets.GCR_JSON_KEY }}
+
+      - name: Checkout the repo
+        uses: actions/checkout@v2
+
+      - name: Detect Container Tool
+        id: detect
+        run: |
+          TOOL=0
+           if test -f "Dockerfile"; then
+             TOOL=docker
+           else
+             TOOL=pack
+           fi
+           echo ::set-output name=tool::${TOOL}
+
+      # Only runs when tool is pack
+      - name: Pack Build
+        if: steps.detect.outputs.tool == 'pack'
+        run: pack build --builder=gcr.io/buildpacks/builder $REPOSITORY_NAME
+
+      # Only runs when tool is pack
+      - name: Docker Tag and Push
+        if: steps.detect.outputs.tool == 'pack'
+        run: |
+          docker tag $REPOSITORY_NAME $CONTAINER_IMAGE
+          docker push $CONTAINER_IMAGE
+
+      # Only runs when tool is docker
+      - name: Docker Build and push
+        if: steps.detect.outputs.tool == 'docker'
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: |
+            ${{ env.CONTAINER_IMAGE }}
+
+      - name: Image digest
+        run: |
+          echo 'SLACK_COLOR=#098e00' >> $GITHUB_ENV
+          echo 'SLACK_TITLE=[${{ github.repository }}] Published a new container.' >> $GITHUB_ENV
+          echo 'IMAGE_MESSAGE<<EOF' >> $GITHUB_ENV
+          echo '@${{ github.ref }} - Built and Published using ${{ steps.detect.outputs.tool }} for ${{ github.sha }}:' >>$GITHUB_ENV
+          echo "    ${CONTAINER_IMAGE}" >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
+
+      - name: The job has failed
+        if: ${{ failure() }}
+        run: |
+          echo 'SLACK_COLOR=#8E1600' >> $GITHUB_ENV
+          echo 'ERROR_MESSAGE=[${{ github.repository }}] Failed to produce a new container.' >> $GITHUB_ENV
+          echo 'IMAGE_MESSAGE<<EOF' >> $GITHUB_ENV
+          echo '@${{ github.ref }} - Failed to build and published using ${{ steps.detect.outputs.tool }}.' >>$GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
+          
+      - name: Post status to Slack
+        # Note: using env.SLACK_WEBHOOK here because secrets are not allowed in the if block.
+        if: ${{ always() }}
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_ICON: http://github.com/interlincx.png?size=48
+          SLACK_USERNAME: github-actions
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_CHANNEL: tech-notice
+          MSG_MINIMAL: 'true'
+          SLACK_MESSAGE: |
+            ${{ env.IMAGE_MESSAGE }}
+            ${{ env.ERROR_MESSAGE }}
+            For detailed logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}

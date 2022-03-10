@@ -1,0 +1,24 @@
+# gcloud app deploy --project "arborist-212100" app.yaml
+
+runtime: nodejs
+env: flex
+
+resources:
+  cpu: 1
+  memory_gb: 3
+
+liveness_check:
+  path: "/"
+readiness_check:
+  path: "/"
+  app_start_timeout_sec: 300
+
+automatic_scaling:
+  min_num_instances: 2
+  max_num_instances: 8
+  cool_down_period_sec: 300
+  cpu_utilization:
+    target_utilization: 0.75
+
+network:
+  instance_tag: arborist
